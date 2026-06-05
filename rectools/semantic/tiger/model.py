@@ -9,6 +9,7 @@ import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelSummary
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from torch.utils.data import DataLoader
+from tqdm.auto import trange
 
 from rectools.semantic import LRScheduleType, OptimizerType
 from rectools.semantic.data_handling import PaddingCollateFn, TIGERDataset
@@ -234,7 +235,7 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
         rows: tp.List[tp.Tuple] = []
         n_users = len(enc_tokens_list)
 
-        for start in range(0, n_users, self.eval_batch_size):
+        for start in trange(0, n_users, self.eval_batch_size, desc="Generating predictions"):
             end = min(start + self.eval_batch_size, n_users)
             batch_tokens = enc_tokens_list[start:end]
             batch_user_ids = user_ids[start:end]

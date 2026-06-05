@@ -478,7 +478,7 @@ def print_results(results: dict[str, dict[str, float]], device: str) -> None:
         "train_seconds",
         "inference_seconds",
         "NDCG@10",
-        "HR@19",
+        "HR@10",
         "MRR@10",
         "Coverage@10",
         "Gini@10",
