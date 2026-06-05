@@ -96,3 +96,7 @@ benchmark_results/
 
 # CatBoost
 catboost_info/
+
+# Dev artifacts
+*.pt
+data/*

@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TIGER tutorial notebook, SASRec vs TIGER benchmark script, and semantic test coverage across data handling, modules, tokenizer, metrics, and TIGER components
 
 
+## [Unreleased]
+
+### Added
+- `rectools.fast_transformers` module — standalone transformer-based sequential recommenders that work directly with torch tensors, bypassing the `Dataset`/pandas pipeline. GPU-native sequence building via `build_sequences()` gives ~30x preprocessing speedup over `SASRecDataPreparator` on ML-20M ([#306](https://github.com/MTSWebServices/RecTools/pull/306))
+- `FlatSASRecNet` network — flat SASRec implementation without the ItemNet hierarchy. Pre-norm transformer encoder with id-embeddings, causal masking, softmax and BCE losses ([#306](https://github.com/MTSWebServices/RecTools/pull/306))
+- `UniSRecNet` network and `UniSRecModel` — sequential recommender with pretrained text embeddings (e.g. Qwen) and a learnable PCA/BN adaptor. Joint training of adaptor + transformer on pretrained embeddings. Configurable losses (softmax, BCE, gBCE, sampled_softmax), optimizers (Adam, AdamW), cosine warmup scheduler, early stopping, checkpoint save/load. `UniSRecModel.fit()` accepts raw `(user_ids, item_ids, timestamps)` tensors ([#306](https://github.com/MTSWebServices/RecTools/pull/306))
+- `align_embeddings()` for mapping pretrained embedding matrices to internal item ID order ([#306](https://github.com/MTSWebServices/RecTools/pull/306))
+- `SequenceBatchDataset` — lightweight torch Dataset wrapper for sequence training data ([#306](https://github.com/MTSWebServices/RecTools/pull/306))
+- Configurable FFN blocks in `UniSRecNet`: `conv1d` (original paper), `linear_gelu`, `linear_relu` with adjustable expansion factor ([#306](https://github.com/MTSWebServices/RecTools/pull/306))
+
+
 ## [0.18.0] - 21.02.2026
 
 ### Added
