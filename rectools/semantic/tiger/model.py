@@ -231,40 +231,48 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
                 tokens.extend(code + offsets[d] for d, code in enumerate(sid))
             enc_tokens_list.append(torch.tensor(tokens, dtype=torch.long))
 
-        max_len = max(t.size(0) for t in enc_tokens_list)
-        enc_input = torch.full(
-            (len(sequences), max_len),
-            TIGERNet.PAD_TOKEN_ID,
-            dtype=torch.long,
-            device=self.device,
-        )
-        for i, t in enumerate(enc_tokens_list):
-            enc_input[i, : t.size(0)] = t.to(self.device)
+        rows: tp.List[tp.Tuple] = []
+        n_users = len(enc_tokens_list)
 
-        enc_padding_mask = enc_input == TIGERNet.PAD_TOKEN_ID
+        for start in range(0, n_users, self.eval_batch_size):
+            end = min(start + self.eval_batch_size, n_users)
+            batch_tokens = enc_tokens_list[start:end]
+            batch_user_ids = user_ids[start:end]
 
-        codes, scores = self.model.generate(enc_input, enc_padding_mask=enc_padding_mask, beam_size=top_k)
+            batch_max_len = max(t.size(0) for t in batch_tokens)
+            enc_input = torch.full(
+                (len(batch_tokens), batch_max_len),
+                TIGERNet.PAD_TOKEN_ID,
+                dtype=torch.long,
+                device=self.device,
+            )
+            for i, t in enumerate(batch_tokens):
+                enc_input[i, : t.size(0)] = t.to(self.device)
 
-        batch_size, num_beams = codes.size(0), codes.size(1)
-        codes_cpu = codes.cpu().tolist()
+            enc_padding_mask = enc_input == TIGERNet.PAD_TOKEN_ID
 
-        all_sids = [tuple(codes_cpu[i][j]) for i in range(batch_size) for j in range(num_beams)]
-        all_decoded: tp.List[tp.Optional[int]] = self.tokenizer.decode(all_sids)  # type: ignore[assignment]
+            codes, scores = self.model.generate(enc_input, enc_padding_mask=enc_padding_mask, beam_size=top_k)
 
-        rows = []
-        for i in range(batch_size):
-            uid = user_ids[i]
-            row_decoded = all_decoded[i * num_beams : (i + 1) * num_beams]
-            row_scores = scores[i]
-            seen = set()
-            rank = 0
-            for j, item_id in enumerate(row_decoded):
-                if item_id is not None and item_id not in seen:
-                    seen.add(item_id)
-                    rank += 1
-                    rows.append((uid, item_id, row_scores[j].item(), rank))
-                if rank >= top_k:
-                    break
+            batch_size, num_beams = codes.size(0), codes.size(1)
+            codes_cpu = codes.cpu().tolist()
+            scores_cpu = scores.cpu()
+
+            all_sids = [tuple(codes_cpu[i][j]) for i in range(batch_size) for j in range(num_beams)]
+            all_decoded: tp.List[tp.Optional[int]] = self.tokenizer.decode(all_sids)  # type: ignore[assignment]
+
+            for i in range(batch_size):
+                uid = batch_user_ids[i]
+                row_decoded = all_decoded[i * num_beams : (i + 1) * num_beams]
+                row_scores = scores_cpu[i]
+                seen: tp.Set[int] = set()
+                rank = 0
+                for j, item_id in enumerate(row_decoded):
+                    if item_id is not None and item_id not in seen:
+                        seen.add(item_id)
+                        rank += 1
+                        rows.append((uid, item_id, row_scores[j].item(), rank))
+                    if rank >= top_k:
+                        break
 
         return pd.DataFrame(rows, columns=["user_id", "item_id", "score", "rank"])
 

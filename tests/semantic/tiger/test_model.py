@@ -110,6 +110,28 @@ class TestTIGERModel:  # pylint: disable=redefined-outer-name
             assert loaded.num_blocks == model.num_blocks
             assert loaded.num_heads == model.num_heads
 
+    def test_predict_batching(self, trained_tokenizer: SIDTokenizer, interactions: pd.DataFrame) -> None:
+        model = TIGERModel(
+            tokenizer=trained_tokenizer,
+            hidden_units=16,
+            num_blocks=1,
+            num_heads=2,
+            max_length=10,
+            device="cpu",
+            beam_size=5,
+            top_k=3,
+            eval_batch_size=2,
+        )
+        result = model.predict(interactions, top_k=3)
+        assert isinstance(result, pd.DataFrame)
+        assert set(result.columns) == {"user_id", "item_id", "score", "rank"}
+        result_user_ids = set(result["user_id"].unique())
+        input_user_ids = set(interactions["user_id"].unique())
+        assert result_user_ids.issubset(input_user_ids)
+        for _uid, group in result.groupby("user_id"):
+            assert list(group["rank"]) == list(range(1, len(group) + 1))
+            assert len(group) <= 3
+
     def test_fit_runs(self, trained_tokenizer: SIDTokenizer, interactions: pd.DataFrame) -> None:
         torch.use_deterministic_algorithms(True)
         model = TIGERModel(
