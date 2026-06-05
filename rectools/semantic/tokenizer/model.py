@@ -8,7 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from numpy.random import choice
 from tqdm.auto import tqdm
 
 from rectools.semantic import OptimizerType, QuantizerType
@@ -351,12 +350,19 @@ class SIDTokenizer:
             f"Item with ID {item} is out of vocabulary. " "Use extend() with an EmbDataset containing this item first."
         )
 
-    def _get_id(self, sid: tp.Tuple[int, ...], default_value: tp.Optional[int] = None) -> tp.Optional[int]:
+    def _get_id(
+        self,
+        sid: tp.Tuple[int, ...],
+        default_value: tp.Optional[int] = None,
+        rng: tp.Optional[np.random.RandomState] = None,
+    ) -> tp.Optional[int]:
         if len(self.sid2id) == 0:
             for item_id, item_sid in self.id2sid.items():
                 self.sid2id[item_sid].append(item_id)
         if sid in self.sid2id:
-            return choice(self.sid2id[sid])
+            if rng is None:
+                rng = np.random
+            return int(rng.choice(self.sid2id[sid]))
         return default_value
 
     def tokenize(  # pylint: disable=redefined-builtin
@@ -386,6 +392,7 @@ class SIDTokenizer:
         self,
         input: tp.Tuple[int, ...] | tp.Iterable[tp.Tuple[int, ...]],
         default_value: tp.Optional[int] = None,
+        rng: tp.Optional[np.random.RandomState] = None,
     ) -> tp.Optional[int] | tp.List[tp.Optional[int]]:
         """Decode incoming SID(s) to corresponding item IDs.
 
@@ -395,6 +402,9 @@ class SIDTokenizer:
             Either a single SID or an iterable of SIDs.
         default_value : tp.Optional[int], optional
             What to return when there is no item corresponding to given SID, by default None
+        rng : np.random.RandomState, optional
+            Random generator used to resolve SID collisions. If omitted, the
+            global NumPy random generator is used.
 
         Returns
         -------
@@ -403,8 +413,8 @@ class SIDTokenizer:
         """
         # check if the input is only a single SID
         if isinstance(input, tuple) and all(map(lambda x: isinstance(x, int), input)):
-            return self._get_id(input, default_value=default_value)
-        return list(map(lambda item: self._get_id(item, default_value=default_value), input))  # type: ignore[arg-type]
+            return self._get_id(input, default_value=default_value, rng=rng)
+        return list(map(lambda item: self._get_id(item, default_value=default_value, rng=rng), input))  # type: ignore[arg-type]
 
     # ------------------------------------------------------------------
     # Save / load

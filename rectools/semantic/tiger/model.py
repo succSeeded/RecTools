@@ -56,6 +56,7 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
         beam_size: int = 20,
         top_k: int = 10,
         train_only_last: bool = True,
+        random_seed: tp.Optional[int] = None,
         # General
         device: tp.Optional[str] = None,
     ):
@@ -78,6 +79,8 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
         self.beam_size = beam_size
         self.top_k = top_k
         self.train_only_last = train_only_last
+        self.random_seed = random_seed
+        self._decode_rng = np.random.RandomState(random_seed) if random_seed is not None else None
 
         # TIGER model hyperparams
         self.hidden_units = hidden_units
@@ -122,8 +125,14 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
             Training interactions (user_id, item_id, optionally timestamp).
         val_df : pd.DataFrame
             Validation interactions (same schema).
+
+        Notes
+        -----
+        If multiple items share the same Semantic ID, decoding during
+        validation remains stochastic. Set ``random_seed`` at model
+        initialization to make this collision resolution reproducible.
         """
-        num_items = max(int(train_df["item_id"].max()), int(val_df["item_id"].max()))
+        num_items = len(set(train_df["item_id"]).union(val_df["item_id"]))
 
         ds_kwargs = self._tiger_dataset_kwargs()
 
@@ -210,6 +219,13 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
         -------
         pd.DataFrame
             Recommendations with columns: user_id, item_id, score, rank.
+
+        Notes
+        -----
+        If multiple items share the same Semantic ID, recommendation
+        deduplication depends on stochastic SID decoding. Set
+        ``random_seed`` at model initialization to make outputs
+        reproducible.
         """
         self.model.eval()
 
@@ -259,7 +275,10 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
             scores_cpu = scores.cpu()
 
             all_sids = [tuple(codes_cpu[i][j]) for i in range(batch_size) for j in range(num_beams)]
-            all_decoded: tp.List[tp.Optional[int]] = self.tokenizer.decode(all_sids)  # type: ignore[assignment]
+            all_decoded: tp.List[tp.Optional[int]] = self.tokenizer.decode(  # type: ignore[assignment]
+                all_sids,
+                rng=self._decode_rng,
+            )
 
             for i in range(batch_size):
                 uid = batch_user_ids[i]
@@ -296,11 +315,17 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
         -------
         dict
             Metric name -> value (Hit@k, NDCG@k, MRR@k, etc.).
+
+        Notes
+        -----
+        If multiple items share the same Semantic ID, decoding during
+        evaluation remains stochastic. Set ``random_seed`` at model
+        initialization to make metric computation reproducible.
         """
         if top_k is None:
             top_k = self.top_k
 
-        num_items = int(test_df["item_id"].max())
+        num_items = test_df["item_id"].nunique()
 
         test_dataset = TIGERDataset(
             interactions=test_df,
@@ -323,6 +348,7 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
             num_items=num_items,
             beam_size=self.beam_size,
             top_k=top_k,
+            decode_rng=self._decode_rng,
         )
 
         trainer = pl.Trainer()
@@ -347,6 +373,7 @@ class TIGERModel:  # pylint: disable=too-many-instance-attributes
             "max_length": self.max_length,
             "ff_dim": self.ff_dim,
             "d_kv": self.d_kv,
+            "random_seed": self.random_seed,
         }
         with open(os.path.join(directory, "config.json"), "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2)

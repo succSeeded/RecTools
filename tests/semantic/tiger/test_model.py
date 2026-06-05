@@ -156,3 +156,90 @@ class TestTIGERModel:  # pylint: disable=redefined-outer-name
         result = model.predict(interactions, top_k=3)
         assert len(result) > 0
         torch.use_deterministic_algorithms(False)
+
+    def test_evaluate_uses_unique_item_count_for_coverage(
+        self,
+        trained_tokenizer: SIDTokenizer,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        model = TIGERModel(
+            tokenizer=trained_tokenizer,
+            hidden_units=16,
+            num_blocks=1,
+            num_heads=2,
+            max_length=10,
+            device="cpu",
+        )
+        interactions = pd.DataFrame(
+            [
+                [1, 10, 1],
+                [1, 20, 2],
+                [1, 30, 3],
+                [2, 10, 1],
+                [2, 30, 2],
+                [2, 50, 3],
+            ],
+            columns=["user_id", "item_id", "timestamp"],
+        )
+        captured = {}
+
+        class FakeTrainer:
+            def test(self, lightning_model, dataloaders):
+                captured["num_items"] = lightning_model.num_items
+                return [{"Coverage@10": 0.0}]
+
+        monkeypatch.setattr("rectools.semantic.tiger.model.pl.Trainer", lambda: FakeTrainer())
+
+        model.evaluate(interactions)
+
+        assert captured["num_items"] == 4
+
+    def test_predict_is_reproducible_with_random_seed(self, trained_tokenizer: SIDTokenizer) -> None:
+        collision_sid = (0, 0)
+        trained_tokenizer.id2sid = {
+            10: collision_sid,
+            20: collision_sid,
+            30: (1, 1),
+        }
+        trained_tokenizer.sid2id.clear()
+
+        interactions = pd.DataFrame(
+            [
+                [1, 10, 1],
+                [1, 30, 2],
+            ],
+            columns=["user_id", "item_id", "timestamp"],
+        )
+
+        first_model = TIGERModel(
+            tokenizer=trained_tokenizer,
+            hidden_units=16,
+            num_blocks=1,
+            num_heads=2,
+            max_length=10,
+            device="cpu",
+            random_seed=42,
+        )
+        second_model = TIGERModel(
+            tokenizer=trained_tokenizer,
+            hidden_units=16,
+            num_blocks=1,
+            num_heads=2,
+            max_length=10,
+            device="cpu",
+            random_seed=42,
+        )
+
+        generated_codes = torch.tensor([[[0, 0], [0, 0], [1, 1]]], dtype=torch.long)
+        generated_scores = torch.tensor([[0.9, 0.8, 0.7]], dtype=torch.float32)
+
+        def fake_generate(*args, **kwargs):
+            return generated_codes, generated_scores
+
+        first_model.model.generate = fake_generate  # type: ignore[method-assign]
+        second_model.model.generate = fake_generate  # type: ignore[method-assign]
+
+        first_result = first_model.predict(interactions, top_k=3)
+        second_result = second_model.predict(interactions, top_k=3)
+
+        assert first_result.equals(second_result)

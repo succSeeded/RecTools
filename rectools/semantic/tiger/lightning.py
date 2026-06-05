@@ -56,6 +56,7 @@ class TIGERLightning(pl.LightningModule):
         lr_schedule: tp.Optional[LRScheduleType] = None,
         max_iters: int = 1,
         num_items: tp.Optional[int] = None,
+        decode_rng: tp.Optional[np.random.RandomState] = None,
     ):
         super().__init__()
 
@@ -70,6 +71,7 @@ class TIGERLightning(pl.LightningModule):
         self.lr_schedule = lr_schedule
         self.weight_decay = weight_decay
         self.max_iters = max_iters
+        self.decode_rng = decode_rng
 
         self._all_topk_items: tp.List[tp.List[int]] = []
 
@@ -109,7 +111,10 @@ class TIGERLightning(pl.LightningModule):
         # Batch-decode: flatten (batch, beam, depth) -> list of tuples, decode once
         codes_cpu = codes.cpu().tolist()
         all_sids = [tuple(codes_cpu[i][j]) for i in range(batch_size) for j in range(num_beams)]
-        all_decoded: tp.List[tp.Optional[int]] = self.tokenizer.decode(all_sids)  # type: ignore[assignment]
+        all_decoded: tp.List[tp.Optional[int]] = self.tokenizer.decode(  # type: ignore[assignment]
+            all_sids,
+            rng=self.decode_rng,
+        )
 
         # Reshape decoded items back to (batch, beam)
         decoded_grid = [all_decoded[i * num_beams : (i + 1) * num_beams] for i in range(batch_size)]

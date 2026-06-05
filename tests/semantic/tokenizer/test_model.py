@@ -131,6 +131,22 @@ class TestSIDTokenizerRKmeans:
         result = tokenizer.decode(unknown_sid, default_value=-1)
         assert result == -1
 
+    def test_decode_collision_is_reproducible_with_rng(self, tokenizer: SIDTokenizer) -> None:
+        tokenizer.id2sid = {
+            10: (1, 1),
+            20: (1, 1),
+            30: (2, 2),
+        }
+        tokenizer.sid2id.clear()
+
+        first_rng = np.random.RandomState(42)
+        second_rng = np.random.RandomState(42)
+
+        first = tokenizer.decode([(1, 1), (1, 1), (1, 1)], rng=first_rng)
+        second = tokenizer.decode([(1, 1), (1, 1), (1, 1)], rng=second_rng)
+
+        assert first == second
+
     def test_len(self, tokenizer: SIDTokenizer) -> None:
         assert len(tokenizer) > 0
         assert len(tokenizer) <= 100
