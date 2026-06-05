@@ -414,7 +414,8 @@ class SIDTokenizer:
         # check if the input is only a single SID
         if isinstance(input, tuple) and all(map(lambda x: isinstance(x, int), input)):
             return self._get_id(input, default_value=default_value, rng=rng)
-        return list(map(lambda item: self._get_id(item, default_value=default_value, rng=rng), input))  # type: ignore[arg-type]
+        # type: ignore[arg-type]
+        return list(map(lambda item: self._get_id(item, default_value=default_value, rng=rng), input))
 
     # ------------------------------------------------------------------
     # Save / load
